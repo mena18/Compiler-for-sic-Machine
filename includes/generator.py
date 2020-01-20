@@ -4,6 +4,7 @@ class generator:
     identifiers = {};
     reserved_words=[];
     words=[];
+    all_loaded={};
     counter=1;
     last_loaded=""
     file_writer=""
@@ -19,18 +20,19 @@ class generator:
             raise Exception("Variable {} Not defined".format(var));
         generator.pr("\t"+"LDA"+"\t"+generator.identifiers[var])
         generator.last_loaded = var;
+        generator.all_loaded[generator.identifiers[var]] = 1
 
     def store(var):
-        if(var not in generator.identifiers):
-            generator.declare(var);
+        generator.declare(var)
         generator.pr("\t"+"STA"+"\t"+generator.identifiers[var])
         generator.last_loaded = var;
+        generator.all_loaded[generator.identifiers[var]] = 1
 
 
     def declare(a):
         if(a not in generator.identifiers):
             generator.identifiers[a] = "V_"+a
-            generator.reserved_words.append("{}\tRESW\t1".format("V_"+a))
+            generator.reserved_words.append("V_"+a)
 
     def word(value):
         if(value not in generator.identifiers):
@@ -47,22 +49,17 @@ class generator:
         generator.store(a);
 
     def expression(postfix):
-        if(len(postfix)==1):
-            w = postfix[0];
-            if(w.type=='number'):
-                generator.word(w.desc)
-                return str(w)
-            elif(w.type=='identifier' and str(w) in generator.identifiers):
-                return str(w)
-            else:
-                raise Exception("variable {} not defined in line {}".format(w.desc,w.line));
-
 
         for token in postfix:
             if token.type=="number":
                 generator.word(token.desc)
             if(token.type=='identifier' and str(token) not in generator.identifiers):
                 raise Exception("variable {} not defined in line {}".format(token.desc,token.line));
+
+        if(len(postfix)==1):
+            return str(postfix[0]);
+
+
 
 
 
@@ -74,7 +71,8 @@ class generator:
             elif(token.type=="operator"):
                 a = stack.pop()
                 b = stack.pop()
-                if(  not(str(b)==last_expression or (str(a)==last_expression and token.desc in ['+','*'] )  or last_expression=="") ):
+
+                if(  not((str(b)==last_expression and token.desc!='^') or (str(a)==last_expression and token.desc in ['+','*'] )  or last_expression=="" ) ):
                     generator.store(last_expression);
 
                 ans = generator.sub_exp(b, token, a);
@@ -106,18 +104,23 @@ class generator:
             generator.pr(loop+"\t"+"MUL\t"+generator.identifiers[a])
             generator.pr("\t"+"TIX\t"+generator.identifiers[b])
             generator.pr("\t"+"JLT\t"+loop)
+            generator.all_loaded[generator.identifiers[b]] = 1
+            generator.all_loaded[generator.identifiers[a]] = 1
         else:
             if((operator=='+' or operator=='*') and generator.last_loaded == b):
                 generator.pr("\t"+operators[operator]+"\t"+generator.identifiers[a])
+                generator.all_loaded[generator.identifiers[a]] = 1
             else:
                 generator.load(a)
                 generator.pr("\t"+operators[operator]+"\t"+generator.identifiers[b])
-
+                generator.all_loaded[generator.identifiers[b]] = 1
 
         generator.last_loaded = exp;
         return exp;
 
     def compare_expression(left,middle,right,loop_name):
+        if(right not in generator.reserved_words):
+            generator.store(right)
         generator.load(left,ignore=1);
         generator.pr("\tCOMP\t{}".format(generator.identifiers[right]))
         if(middle=='=='):
